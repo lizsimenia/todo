@@ -1,26 +1,27 @@
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:flutter_svg/flutter_svg.dart';
+
+import 'package:todo/main.dart';
 import 'package:todo/task_model.dart';
 
-class HiveService {
-  static final HiveService _instance = HiveService._internal();
-  factory HiveService() => _instance;
-  HiveService._internal();
-
-  Box<Task>? _taskBox;
-
-  Future<void> init() async {
-    await Hive.initFlutter();
-    Hive.registerAdapter(TaskAdapter());
-    _taskBox = await Hive.openBox<Task>('tasks');
-  }
-
-  Box<Task> get taskBox {
-    if (_taskBox == null) throw Exception('Hive box not initialized');
-    return _taskBox!;
-  }
+void openEditTaskDialog(BuildContext context, Task task) {
+  showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          contentPadding: const EdgeInsets.all(16),
+          content: SizedBox(
+            width: 700,
+            child: AddTaskForm(task: task),
+          ),
+        );
+      }
+  );
 }
-
 
 class TodayPage extends StatelessWidget {
   const TodayPage({super.key});
@@ -31,28 +32,103 @@ class TodayPage extends StatelessWidget {
       valueListenable: HiveService().taskBox.listenable(),
       builder: (context, Box<Task> box, _) {
         final tasks = box.values.toList();
+        final today = DateTime.now();
+        final todayTasks = tasks.where((task) {
+          final taskDate = task.date!;
+          return taskDate.year == today.year &&
+              taskDate.month == today.month &&
+              taskDate.day == today.day;
+        }).toList();
+        todayTasks.sort((a, b) => a.priority.index.compareTo(b.priority.index));
+
+
+        if (todayTasks.isEmpty) {
+          return Center(
+            child: SvgPicture.asset(
+              'assets/pics/aim.svg',
+              width: 200,
+              height: 200,
+              fit: BoxFit.contain,
+            ),
+          );
+        } else {
         return ListView.builder(
           padding: const EdgeInsets.all(16),
-          itemCount: tasks.length,
+          itemCount: todayTasks.length,
           itemBuilder: (context, index) {
-            final task = tasks[index];
-            return Dismissible(
+            final task = todayTasks[index];
+            return Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white, // цвет фона блока
+                borderRadius: BorderRadius.circular(12), // скругление углов
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withAlpha(50), // цвет тени с прозрачностью
+                    spreadRadius: 1, // насколько тень распространяется
+                    blurRadius: 8, // размытие тени
+                    offset: const Offset(0, 4), // смещение тени по X и Y
+                  ),
+                ],
+                border: Border.all(
+                  color: Colors.grey.shade300, // цвет границы
+                  width: 1, // толщина границы
+                ),
+              ),
+            child: Dismissible(
               key: Key(task.title),
               background: Container(color: Colors.red),
-              onDismissed: (_) => box.deleteAt(index),
+              onDismissed: (_) => box.deleteAt(box.values.toList().indexOf(task)),
               child: ListTile(
-                title: Text(task.title)
+                onTap: () {
+                  openEditTaskDialog(context, task);
+                },
+                trailing: Container(
+                  width: 12,
+                  height: 12,
+                  decoration: BoxDecoration(
+                    color: priorityColors[task.priority],
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                leading: Checkbox(
+                  value: false,
+                  onChanged: (bool? checked) {
+                    if (checked == true) {
+                      final taskIndex = box.values.toList().indexOf(task);
+                      box.deleteAt(taskIndex);
+                    }
+                  },
+                ),
+                title: Text(task.title),
               ),
+            )
             );
           },
-        );
+        );}
       },
     );
   }
 
-  // void _showEditTaskDialog(BuildContext context, Task task, int index) {
-  //   // Реализация формы редактирования аналогична _AddTaskForm
+
+  // void _openEditTaskDialog(BuildContext context, Task task) {
+  //   showDialog(
+  //       context: context,
+  //       builder: (context) {
+  //         return AlertDialog(
+  //           shape: RoundedRectangleBorder(
+  //             borderRadius: BorderRadius.circular(12),
+  //           ),
+  //           contentPadding: const EdgeInsets.all(16),
+  //           content: SizedBox(
+  //             width: 700,
+  //             child: AddTaskForm(task: task),
+  //           ),
+  //         );
+  //       }
+  //   );
   // }
   //
   // String _formatDate(DateTime? date) { ... }
 }
+

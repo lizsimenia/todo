@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:hive_flutter/hive_flutter.dart';
 import 'package:todo/task_model.dart';
+
+import 'package:hive_flutter/hive_flutter.dart';
+import 'package:path_provider/path_provider.dart' as path_provider;
 
 import 'package:intl/intl.dart';
 import 'package:intl/date_symbol_data_local.dart';
@@ -10,16 +12,34 @@ import 'package:todo/pages/incoming_page.dart';
 import 'package:todo/pages/projects_page.dart';
 import 'package:todo/pages/calendar_page.dart';
 
+class HiveService {
+  static final HiveService _instance = HiveService._internal();
+  factory HiveService() => _instance;
+  HiveService._internal();
+
+  Box<Task>? _taskBox;
+
+  Future<void> init() async {
+    final applicationDocumentDir = await path_provider.getApplicationDocumentsDirectory();
+    Hive.init(applicationDocumentDir.path);
+    if (!Hive.isAdapterRegistered(0)) {
+      Hive.registerAdapter(TaskAdapter());
+    }
+    if (!Hive.isAdapterRegistered(1)) {
+      Hive.registerAdapter(PriorityAdapter());
+    }
+    _taskBox = await Hive.openBox<Task>('tasks');
+  }
+
+  Box<Task> get taskBox {
+    if (_taskBox == null) throw Exception('Hive box not initialized');
+    return _taskBox!;
+  }
+}
+
 void main() async{
   WidgetsFlutterBinding.ensureInitialized();
   await HiveService().init();
-
-  if (!Hive.isAdapterRegistered(0)) {
-    Hive.registerAdapter(TaskAdapter());
-  }
-  if (!Hive.isAdapterRegistered(1)) {
-    Hive.registerAdapter(PriorityAdapter());
-  }
   await initializeDateFormatting('ru', null);
   runApp(const App());
 }
@@ -54,11 +74,11 @@ String getTodayDateText() {
   final now = DateTime.now();
   final formatter = DateFormat('d MMMM - EEEE', 'ru');
   final formatted = formatter.format(now);
-  final capitalized = formatted.replaceFirstMapped(
-    RegExp(r'-\s(\w)'),
-        (match) => '- ${match.group(1)!.toUpperCase()}',
-  );
-  return 'Сегодня – $capitalized';
+  final parts = formatted.split(' - ');
+
+  final datePart = parts[0];
+  final dayPart = parts[1][0].toUpperCase() + parts[1].substring(1);
+  return 'Сегодня – $datePart – $dayPart';
 }
 
 class HomeScreen extends StatefulWidget {
@@ -102,7 +122,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 right: 16,
                 top: 16,
               ),
-              child: _AddTaskForm()
+              child: AddTaskForm()
           );
         }
     );
@@ -112,7 +132,9 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(getGreeting() + "  " + getTodayDateText()),
+        title: Text(
+            "${getGreeting()}  ${getTodayDateText()}",
+            style: TextStyle(fontWeight: FontWeight.bold)),
 
       ),
       body: _pages[_selectedIndexPage],
@@ -136,27 +158,6 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-// class Task {
-//   final String title;
-//   final Priority priority;
-//   final DateTime? date;
-//   final String project;
-//
-//   Task({
-//     required this.title,
-//     required this.priority,
-//     this.date,
-//     required this.project,
-//   });
-// }
-
-// enum Priority {
-//   urgentImportant,
-//   urgentNotImportant,
-//   notUrgentImportant,
-//   notUrgentNotImportant
-// }
-
 final Map<Priority, Color> priorityColors = {
   Priority.urgentImportant: Colors.redAccent,
   Priority.urgentNotImportant: Colors.deepOrangeAccent,
@@ -169,10 +170,10 @@ class PrioritySelector extends StatelessWidget {
   final ValueChanged<Priority> onChanged;
 
   const PrioritySelector({
-    Key? key,
+    super.key,
     required this.selectedPriority,
     required this.onChanged,
-  }) : super(key: key);
+  });
 
   static const Map<Priority, String> _labels = {
     Priority.urgentImportant: 'Срочно и важно',
@@ -227,10 +228,10 @@ class DateSelector extends StatelessWidget {
   final ValueChanged<Date> onChanged;
 
   const DateSelector({
-    Key? key,
+    super.key,
     required this.selectedDate,
     required this.onChanged,
-  }) : super(key: key);
+  });
 
   static const Map<Date, String> _labels = {
     Date.today: 'Сегодня',
@@ -244,9 +245,9 @@ class DateSelector extends StatelessWidget {
     return GridView.count(
       shrinkWrap: true,
       crossAxisCount: 4,
-      childAspectRatio: 6,
-      mainAxisSpacing: 8,
-      crossAxisSpacing: 8,
+      childAspectRatio: 4,
+      mainAxisSpacing: 4,
+      crossAxisSpacing: 4,
       physics: const NeverScrollableScrollPhysics(),
       children: Date.values.map((date){
         final isSelected = date == selectedDate;
@@ -269,14 +270,16 @@ class DateSelector extends StatelessWidget {
   }
 }
 
-class _AddTaskForm extends StatefulWidget {
-  const _AddTaskForm({super.key});
+class AddTaskForm extends StatefulWidget {
+  final Task? task;
+
+  const AddTaskForm({super.key, this.task});
 
   @override
-  State<_AddTaskForm> createState() => _AddTaskFormState();
+  State<AddTaskForm> createState() => _AddTaskFormState();
 }
 
-class _AddTaskFormState extends State<_AddTaskForm> {
+class _AddTaskFormState extends State<AddTaskForm> {
   final _textController = TextEditingController();
 
   Priority? _selectedPriority;
@@ -285,22 +288,42 @@ class _AddTaskFormState extends State<_AddTaskForm> {
 
   bool _priorityError = false;
   bool _dateError = false;
-  bool _textError = false;
 
   DateTime? _pickedDate;
   Color _sendButtonColor = Colors.teal;
 
+  @override
+  void initState() {
+    super.initState();
 
-  void _onSubmit() async{
+    _textController.text = widget.task?.title ?? '';
+    _selectedPriority = widget.task?.priority;
+    _selectedProject = widget.task?.project;
+
+    if (widget.task?.date != null) {
+      final now = DateTime.now();
+      final taskDate = widget.task!.date!;
+      final difference = taskDate.difference(DateTime(now.year, now.month, now.day)).inDays;
+      if (difference == 0) {
+        _selectedDate = Date.today;
+      } else if (difference == 1) {
+        _selectedDate = Date.tomorrow;
+      } else if (difference == 2) {
+        _selectedDate = Date.dayAfterTomorrow;
+      } else {
+        _selectedDate = Date.calendar;
+        _pickedDate = taskDate;
+      }
+    }
+  }
+
+  void _onSubmit() async {
     setState(() {
-      _textError = _textController.text
-          .trim()
-          .isEmpty;
       _priorityError = _selectedPriority == null;
       _dateError = _selectedDate == null;
     });
 
-    if (_textError || _priorityError || _dateError) {
+    if (_priorityError || _dateError) {
       setState(() {
         _sendButtonColor = Colors.red;
       });
@@ -331,21 +354,28 @@ class _AddTaskFormState extends State<_AddTaskForm> {
         break;
     }
 
-    final task = Task(
-      title: _textController.text.trim(),
-      priority: _selectedPriority!,
-      date: taskDate,
-      project: _selectedProject ?? 'Без проекта',
-    );
-
-    await HiveService().taskBox.add(task);
+    if (widget.task == null) {
+      final task = Task(
+        title: _textController.text.trim(),
+        priority: _selectedPriority!,
+        date: taskDate,
+        project: _selectedProject ?? 'Без проекта',
+      );
+      await HiveService().taskBox.add(task);
+    } else {
+      final taskIndex = HiveService().taskBox.values.toList().indexOf(
+          widget.task!);
+      if (taskIndex != -1) {
+        final updatedTask = Task(
+          title: _textController.text.trim(),
+          priority: _selectedPriority!,
+          date: taskDate,
+          project: _selectedProject ?? 'Без проекта',
+        );
+        await HiveService().taskBox.putAt(taskIndex, updatedTask);
+      }
+    }
     Navigator.pop(context);
-  }
-
-
-  @override
-  void initState(){
-    super.initState();
   }
 
   @override
@@ -393,12 +423,22 @@ class _AddTaskFormState extends State<_AddTaskForm> {
                       firstDate: DateTime.now(),
                       lastDate: DateTime(2100),
                   );
+                  if (pickedDate != null) {
+                    setState(() {
+                      _selectedDate = Date.calendar;
+                      _pickedDate = pickedDate;
+                    });
+                  }
+                } else {
+                  setState(() {
+                    _selectedDate = date;
+                    _pickedDate = null;
+                  });
                 }
-                setState(() {
-                  _selectedDate = date;
-                });
-              })
+              }),
+          const SizedBox(height: 20),
         ],
+
       )
     );
 
