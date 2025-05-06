@@ -14,7 +14,7 @@ class Task {
   final DateTime? date;
 
   @HiveField(3)
-  final String project;
+  final Project? project;
 
   Task({
     required this.title,
@@ -31,3 +31,15 @@ enum Priority {
   @HiveField(2) notUrgentImportant,
   @HiveField(3) notUrgentNotImportant,
 }
+
+@HiveType(typeId: 2)
+class Project{
+  @HiveField(0)
+  final String name;
+
+  @HiveField(1)
+  final String? description;
+
+  Project({required this.name, this.description});
+}
+

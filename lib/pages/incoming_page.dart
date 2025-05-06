@@ -9,15 +9,32 @@ import 'package:todo/pages/today_page.dart';
 
 import 'package:intl/intl.dart';
 
-Map<String, List<Task>> groupTasksByDate(Box<Task> tasks) {
-  final Map<String, List<Task>> groupedTasks = {};
-  final dateFormat = DateFormat('yyyy-MM-dd');
+String formatDateKey(DateTime date) {
+  final now = DateTime.now();
+  final isCurrentYear = date.year == now.year;
+
+  final day = date.day.toString().padLeft(2, '0');
+  final month = date.month.toString().padLeft(2, '0');
+  final weekday = DateFormat('EEEE', 'ru').format(date);
+
+  final weekdayCapitalized = weekday[0].toUpperCase() + weekday.substring(1);
+
+  final datePart = isCurrentYear
+      ? '$day.$month'
+      : '$day.$month.${date.year}';
+
+  return '$datePart $weekdayCapitalized';
+}
+
+
+Map<DateTime, List<Task>> groupTasksByDate(Box<Task> tasks) {
+  final Map<DateTime, List<Task>> groupedTasks = {};
 
   List<Task> allTasks = tasks.values.toList();
   allTasks.sort((a, b) => a.priority.index.compareTo(b.priority.index));
 
   for (var task in allTasks) {
-    final dateKey = dateFormat.format(task.date!);
+    final dateKey = DateTime(task.date!.year, task.date!.month, task.date!.day);
     if (!groupedTasks.containsKey(dateKey)) {
       groupedTasks[dateKey] = [];
     }
@@ -58,7 +75,7 @@ class IncomingPage extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          dateKey,
+          formatDateKey(dateKey),
           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
         ),
         const SizedBox(height: 8),

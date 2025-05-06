@@ -20,7 +20,7 @@ class TaskAdapter extends TypeAdapter<Task> {
       title: fields[0] as String,
       priority: fields[1] as Priority,
       date: fields[2] as DateTime?,
-      project: fields[3] as String,
+      project: fields[3] as Project?,
     );
   }
 
@@ -45,6 +45,43 @@ class TaskAdapter extends TypeAdapter<Task> {
   bool operator ==(Object other) =>
       identical(this, other) ||
       other is TaskAdapter &&
+          runtimeType == other.runtimeType &&
+          typeId == other.typeId;
+}
+
+class ProjectAdapter extends TypeAdapter<Project> {
+  @override
+  final int typeId = 2;
+
+  @override
+  Project read(BinaryReader reader) {
+    final numOfFields = reader.readByte();
+    final fields = <int, dynamic>{
+      for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
+    };
+    return Project(
+      name: fields[0] as String,
+      description: fields[1] as String?,
+    );
+  }
+
+  @override
+  void write(BinaryWriter writer, Project obj) {
+    writer
+      ..writeByte(2)
+      ..writeByte(0)
+      ..write(obj.name)
+      ..writeByte(1)
+      ..write(obj.description);
+  }
+
+  @override
+  int get hashCode => typeId.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ProjectAdapter &&
           runtimeType == other.runtimeType &&
           typeId == other.typeId;
 }

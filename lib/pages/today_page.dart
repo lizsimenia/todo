@@ -5,6 +5,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:todo/main.dart';
 import 'package:todo/task_model.dart';
 
+
 void openEditTaskDialog(BuildContext context, Task task) {
   showDialog(
       context: context,
@@ -40,8 +41,6 @@ class TodayPage extends StatelessWidget {
               taskDate.day == today.day;
         }).toList();
         todayTasks.sort((a, b) => a.priority.index.compareTo(b.priority.index));
-
-
         if (todayTasks.isEmpty) {
           return Center(
             child: SvgPicture.asset(
@@ -59,20 +58,21 @@ class TodayPage extends StatelessWidget {
             final task = todayTasks[index];
             return Container(
               padding: const EdgeInsets.all(16),
+              margin: const EdgeInsets.only(bottom: 16),
               decoration: BoxDecoration(
-                color: Colors.white, // цвет фона блока
-                borderRadius: BorderRadius.circular(12), // скругление углов
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withAlpha(50), // цвет тени с прозрачностью
-                    spreadRadius: 1, // насколько тень распространяется
-                    blurRadius: 8, // размытие тени
-                    offset: const Offset(0, 4), // смещение тени по X и Y
+                    color: Colors.black.withAlpha(50),
+                    spreadRadius: 1,
+                    blurRadius: 8,
+                    offset: const Offset(0, 4),
                   ),
                 ],
                 border: Border.all(
-                  color: Colors.grey.shade300, // цвет границы
-                  width: 1, // толщина границы
+                  color: Colors.grey.shade300,
+                  width: 1,
                 ),
               ),
             child: Dismissible(
@@ -105,30 +105,10 @@ class TodayPage extends StatelessWidget {
             )
             );
           },
-        );}
+        );
+        }
       },
     );
   }
-
-
-  // void _openEditTaskDialog(BuildContext context, Task task) {
-  //   showDialog(
-  //       context: context,
-  //       builder: (context) {
-  //         return AlertDialog(
-  //           shape: RoundedRectangleBorder(
-  //             borderRadius: BorderRadius.circular(12),
-  //           ),
-  //           contentPadding: const EdgeInsets.all(16),
-  //           content: SizedBox(
-  //             width: 700,
-  //             child: AddTaskForm(task: task),
-  //           ),
-  //         );
-  //       }
-  //   );
-  // }
-  //
-  // String _formatDate(DateTime? date) { ... }
 }
 

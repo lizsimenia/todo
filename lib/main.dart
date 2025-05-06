@@ -12,12 +12,34 @@ import 'package:todo/pages/incoming_page.dart';
 import 'package:todo/pages/projects_page.dart';
 import 'package:todo/pages/calendar_page.dart';
 
+
+import 'package:windows_notification/windows_notification.dart';
+import 'package:windows_notification/notification_message.dart';
+
+final winNotifyPlugin = WindowsNotification(applicationId: 'com.todo.todo');
+Future<void> showTodayTasksNotification(List<Task> todayTasks) async {
+  String message = 'Сегодня по планам:';
+  for (int i = 0; i < todayTasks.length; i++) {
+    message += '\n${i + 1}. ${todayTasks[i].title}';
+  }
+
+  final notificationMessage = NotificationMessage.fromPluginTemplate(
+    'today_tasks',           // Идентификатор уведомления
+    'Ваши задачи на сегодня', // Заголовок уведомления
+    message,                  // Текст уведомления
+  );
+
+  await winNotifyPlugin.showNotificationPluginTemplate(notificationMessage);
+}
+
+
 class HiveService {
   static final HiveService _instance = HiveService._internal();
   factory HiveService() => _instance;
   HiveService._internal();
 
   Box<Task>? _taskBox;
+  Box<Project>? _projectBox;
 
   Future<void> init() async {
     final applicationDocumentDir = await path_provider.getApplicationDocumentsDirectory();
@@ -28,16 +50,132 @@ class HiveService {
     if (!Hive.isAdapterRegistered(1)) {
       Hive.registerAdapter(PriorityAdapter());
     }
+    if (!Hive.isAdapterRegistered(2)) {
+      Hive.registerAdapter(ProjectAdapter());
+    }
+
     _taskBox = await Hive.openBox<Task>('tasks');
+    _projectBox = await Hive.openBox<Project>('projects');
   }
 
   Box<Task> get taskBox {
     if (_taskBox == null) throw Exception('Hive box not initialized');
     return _taskBox!;
   }
+
+  Box<Project> get projectBox {
+    if (_projectBox == null) throw Exception('Hive box not initialized');
+    return _projectBox!;
+  }
 }
 
+class TaskProjectSwitcher extends StatefulWidget {
+  final Function(bool isTask) onChanged;
+  final bool isTask;
+
+  const TaskProjectSwitcher({
+    super.key,
+    required this.onChanged,
+    required this.isTask,
+  });
+
+  @override
+  State<TaskProjectSwitcher> createState() => _TaskProjectSwitcherState();
+}
+
+class _TaskProjectSwitcherState extends State<TaskProjectSwitcher> {
+  late bool _isTask;
+
+  @override
+  void initState() {
+    super.initState();
+    _isTask = widget.isTask;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 180,
+      height: 40,
+      decoration: BoxDecoration(
+        color: Colors.grey.shade200,
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: Stack(
+        children: [
+          AnimatedAlign(
+            alignment: _isTask ? Alignment.centerLeft : Alignment.centerRight,
+            duration: Duration(milliseconds: 200),
+            curve: Curves.ease,
+            child: Container(
+              width: 90,
+              height: 36,
+              margin: EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(22),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withAlpha(50),
+                    blurRadius: 4,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          Row(
+            children: [
+              Expanded(
+                child: GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      _isTask = true;
+                    });
+                    widget.onChanged(true);
+                  },
+                  child: Center(
+                    child: Text(
+                      'Задача',
+                      style: TextStyle(
+                        color: _isTask ? Colors.black : Colors.grey,
+                        fontWeight: _isTask ? FontWeight.bold : FontWeight.normal,
+                        fontSize: 16,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              Expanded(
+                child: GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      _isTask = false;
+                    });
+                    widget.onChanged(false);
+                  },
+                  child: Center(
+                    child: Text(
+                      'Проект',
+                      style: TextStyle(
+                        color: !_isTask ? Colors.black : Colors.grey,
+                        fontWeight: !_isTask ? FontWeight.bold : FontWeight.normal,
+                        fontSize: 16,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+
 void main() async{
+
   WidgetsFlutterBinding.ensureInitialized();
   await HiveService().init();
   await initializeDateFormatting('ru', null);
@@ -89,6 +227,28 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  bool _notification = false;
+
+  @override
+  void initState() {
+    super.initState();
+      if (!_notification) {
+        final box = HiveService().taskBox;
+        final today = DateTime.now();
+        final todayTasks = box.values.where((task) {
+          final taskDate = task.date!;
+          return taskDate.year == today.year &&
+              taskDate.month == today.month &&
+              taskDate.day == today.day;
+        }).toList();
+
+        if (todayTasks.isNotEmpty) {
+          showTodayTasksNotification(todayTasks);
+          _notification = true;
+        }
+      }
+  }
+
   int _selectedIndexPage = 0;
 
   final List<Widget> _pages = const[
@@ -104,7 +264,7 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  void _selectAddTask() {
+  void _selectAdd() {
     showModalBottomSheet(
         context: context,
         isScrollControlled: true,
@@ -122,7 +282,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 right: 16,
                 top: 16,
               ),
-              child: AddTaskForm()
+              child: AddForm()
           );
         }
     );
@@ -150,7 +310,7 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
       floatingActionButton: FloatingActionButton(
-          onPressed: _selectAddTask,
+          onPressed: _selectAdd,
           child: const Icon(Icons.add),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
@@ -270,10 +430,12 @@ class DateSelector extends StatelessWidget {
   }
 }
 
+
 class AddTaskForm extends StatefulWidget {
   final Task? task;
+  final Project? initialProject;
 
-  const AddTaskForm({super.key, this.task});
+  const AddTaskForm({super.key, this.task, this.initialProject});
 
   @override
   State<AddTaskForm> createState() => _AddTaskFormState();
@@ -284,10 +446,11 @@ class _AddTaskFormState extends State<AddTaskForm> {
 
   Priority? _selectedPriority;
   Date? _selectedDate;
-  String? _selectedProject;
+  Project? _selectedProject;
 
   bool _priorityError = false;
   bool _dateError = false;
+  bool _textError = false;
 
   DateTime? _pickedDate;
   Color _sendButtonColor = Colors.teal;
@@ -298,7 +461,7 @@ class _AddTaskFormState extends State<AddTaskForm> {
 
     _textController.text = widget.task?.title ?? '';
     _selectedPriority = widget.task?.priority;
-    _selectedProject = widget.task?.project;
+    _selectedProject = widget.task?.project ?? widget.initialProject;
 
     if (widget.task?.date != null) {
       final now = DateTime.now();
@@ -321,9 +484,10 @@ class _AddTaskFormState extends State<AddTaskForm> {
     setState(() {
       _priorityError = _selectedPriority == null;
       _dateError = _selectedDate == null;
+      _textError = _textController.text == '';
     });
 
-    if (_priorityError || _dateError) {
+    if (_priorityError || _dateError || _textError) {
       setState(() {
         _sendButtonColor = Colors.red;
       });
@@ -359,7 +523,7 @@ class _AddTaskFormState extends State<AddTaskForm> {
         title: _textController.text.trim(),
         priority: _selectedPriority!,
         date: taskDate,
-        project: _selectedProject ?? 'Без проекта',
+        project: _selectedProject,
       );
       await HiveService().taskBox.add(task);
     } else {
@@ -370,7 +534,7 @@ class _AddTaskFormState extends State<AddTaskForm> {
           title: _textController.text.trim(),
           priority: _selectedPriority!,
           date: taskDate,
-          project: _selectedProject ?? 'Без проекта',
+          project: _selectedProject,
         );
         await HiveService().taskBox.putAt(taskIndex, updatedTask);
       }
@@ -382,8 +546,8 @@ class _AddTaskFormState extends State<AddTaskForm> {
   Widget build(BuildContext context) {
     return SingleChildScrollView(
       child: Column(
-        mainAxisSize: MainAxisSize.min,
         children: [
+          SizedBox(height: 20),
           Row(
             children: [
               Expanded(
@@ -437,11 +601,341 @@ class _AddTaskFormState extends State<AddTaskForm> {
                 }
               }),
           const SizedBox(height: 20),
+          const Text('Задача относится к проекту?'),
+          ProjectSelector(
+            selectedProject: _selectedProject,
+            onChanged: (project) {
+              setState(() {
+                _selectedProject = project;
+              });
+            },
+          ),
         ],
 
       )
     );
 
+  }
+}
+
+
+class ProjectSelector extends StatelessWidget {
+  final Project? selectedProject;
+  final ValueChanged<Project?> onChanged;
+
+  const ProjectSelector({
+    super.key,
+    required this.selectedProject,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final projects = HiveService().projectBox.values.toList();
+
+    return GridView.count(
+      shrinkWrap: true,
+      crossAxisCount: 4,
+      childAspectRatio: 4,
+      mainAxisSpacing: 4,
+      crossAxisSpacing: 4,
+      physics: const NeverScrollableScrollPhysics(),
+      children: [
+        GestureDetector(
+          onTap: () => onChanged(null),
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(100),
+              color: selectedProject == null
+                  ? Colors.white10
+                  : Colors.grey.shade400,
+            ),
+            alignment: Alignment.center,
+            child: const Text(
+              'Без проекта',
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ),
+        ...projects.map((project) {
+          final isSelected = project == selectedProject;
+          return GestureDetector(
+            onTap: () => onChanged(project),
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(100),
+                color: isSelected ? Colors.white10 : Colors.grey.shade400,
+              ),
+              alignment: Alignment.center,
+              child: Text(
+                project.name,
+                textAlign: TextAlign.center,
+              ),
+            ),
+          );
+        }).toList(),
+      ],
+    );
+  }
+}
+
+
+
+class AddProjectForm extends StatefulWidget {
+  final Project? project;
+  const AddProjectForm({super.key, this.project});
+
+  @override
+  State<AddProjectForm> createState() => _AddProjectFormState();
+}
+
+class _AddProjectFormState extends State<AddProjectForm> {
+  final _projectNameController = TextEditingController();
+  final _projectDescController = TextEditingController();
+
+  bool _isNameDuplicate = false;
+  Project? _savedProject;
+  bool get _canSaveProject {
+    final name = _projectNameController.text.trim();
+    final desc = _projectDescController.text.trim();
+    if (name.isEmpty) return false;
+    if (widget.project == null) {
+      return true;
+    } else {
+      return name != widget.project!.name || desc != (widget.project!.description ?? '');
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.project != null) {
+      _projectNameController.text = widget.project!.name;
+      _projectDescController.text = widget.project!.description ?? '';
+      _savedProject = widget.project;
+    }
+    _projectNameController.addListener(_onProjectNameChanged);
+    _projectDescController.addListener(_onProjectFieldChanged);
+  }
+
+  @override
+  void dispose() {
+    _projectNameController.removeListener(_onProjectNameChanged);
+    _projectDescController.removeListener(_onProjectFieldChanged);
+    _projectNameController.dispose();
+    _projectDescController.dispose();
+    super.dispose();
+  }
+
+  void _onProjectFieldChanged() {
+    setState(() {
+    });
+  }
+  void _onProjectNameChanged() {
+    if (_savedProject != null &&
+        _savedProject!.name != _projectNameController.text.trim()) {
+      setState(() {
+        _savedProject = null;
+      });
+    }
+    setState(() {});
+  }
+
+  Future<void> _saveProject() async {
+    final name = _projectNameController.text.trim();
+    final desc = _projectDescController.text.trim();
+    if (name.isEmpty) return;
+
+    checkDuplicate();
+    final exists = HiveService().projectBox.values.any((p) => p.name == name);
+    if (exists) {return ;}
+
+    if (widget.project == null) {
+      final project = Project(
+        name: name,
+        description: desc,
+      );
+      await HiveService().projectBox.add(project);
+      setState(() {
+        _savedProject = project;
+      });
+    }
+    else{
+      final index = HiveService().projectBox.values.toList().indexOf(widget.project!);
+      if (index != -1) {
+        final updatedProject = Project(name: name, description: desc);
+        await HiveService().projectBox.putAt(index, updatedProject);
+
+        final taskBox = HiveService().taskBox;
+        final tasksToUpdate = taskBox.values
+            .where((task) => task.project?.name == widget.project!.name)
+            .toList();
+        for (final task in tasksToUpdate) {
+          final taskIndex = taskBox.values.toList().indexOf(task);
+          final updatedTask = Task(
+            title: task.title,
+            date: task.date,
+            priority: task.priority,
+            project: updatedProject,
+          );
+          await taskBox.putAt(taskIndex, updatedTask);
+        }
+        setState(() {
+          _savedProject = updatedProject;
+        });
+      }
+    }
+    if (mounted) Navigator.pop(context);
+  }
+
+  Future<void> _addTaskToProject() async {
+    if (_savedProject == null) return;
+    showDialog<Task>(
+      context: context,
+      builder: (context) => AlertDialog(
+        contentPadding: const EdgeInsets.all(16),
+        content: SizedBox(
+          width: 700,
+          child: AddTaskForm(initialProject: _savedProject),
+        ),
+      ),
+    );
+  }
+
+  void checkDuplicate() {
+    final name = _projectNameController.text.trim();
+    final isEditing = widget.project != null;
+    final exists = HiveService().projectBox.values.any((p) =>
+    p.name == name && (!isEditing || p != widget.project)
+    );
+
+    if (!isEditing && exists) {
+      setState(() {
+        _isNameDuplicate = true;
+      });
+      return;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      child: Column(
+        children: [
+          TextField(
+            controller: _projectNameController,
+            decoration: InputDecoration(
+              labelText: 'Название проекта',
+              errorText: _isNameDuplicate ? 'Проект уже существует' : null,
+              border: const OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _projectDescController,
+            decoration: const InputDecoration(
+              labelText: 'Описание',
+              border: OutlineInputBorder(),
+            ),
+            maxLines: 3,
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: ElevatedButton(
+                  onPressed: _canSaveProject
+                      ? _saveProject
+                      : null,
+                  child: const Text('Сохранить проект'),
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: ElevatedButton.icon(
+                  icon: const Icon(Icons.add),
+                  label: const Text('Добавить задачу'),
+                  onPressed: _savedProject != null ? _addTaskToProject : null,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+          ValueListenableBuilder(
+            valueListenable: HiveService().taskBox.listenable(),
+            builder: (context, Box<Task> box, _) {
+              final tasks = box.values
+                  .where((task) => task.project?.name == _savedProject?.name)
+                  .toList();
+
+              if (tasks.isEmpty) return const SizedBox();
+
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SizedBox(height: 24),
+                  const Text(
+                    'Задачи проекта:',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                  ),
+                  ...tasks.map((task) => ListTile(
+                    title: Text(task.title),
+                    subtitle: Text(
+                      task.date != null
+                          ? DateFormat('dd.MM.yyyy').format(task.date!)
+                          : 'Без даты',
+                    ),
+                  )),
+                ],
+              );
+            },
+          )
+
+        ],
+      ),
+    );
+  }
+}
+
+
+class AddForm extends StatefulWidget {
+  final Task? task;
+
+  const AddForm({super.key, this.task});
+
+  @override
+  State<AddForm> createState() => _AddFormState();
+}
+
+class _AddFormState extends State<AddForm> {
+  bool isTask = true;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+    width: 700,
+      height: 320,
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        TaskProjectSwitcher(
+          isTask: isTask,
+          onChanged: (value) {
+            setState(() {
+              isTask = value;
+            });
+          },
+        ),
+        const SizedBox(height: 24),
+        Expanded(
+          child: SingleChildScrollView(
+          child: isTask
+              ? AddTaskForm(task: widget.task) : AddProjectForm(),
+        ),
+        )
+      ],
+    ),
+    );
   }
 }
 

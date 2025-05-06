@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:table_calendar/table_calendar.dart';
-import 'package:hive/hive.dart';
-import 'package:intl/intl.dart';
 import 'package:todo/main.dart';
 import 'package:todo/pages/today_page.dart';
 
@@ -26,18 +24,6 @@ class _CalendarPageState extends State<CalendarPage> {
   void initState() {
     super.initState();
     _selectedDay = _focusedDay;
-    HiveService().taskBox.listenable().addListener(() {
-      final grouped = <DateTime, List<Task>>{};
-      for (var task in HiveService().taskBox.values) {
-        final date = DateTime(task.date!.year, task.date!.month, task.date!.day);
-        grouped[date] ??= [];
-        grouped[date]!.add(task);
-      }
-      setState(() {
-        _tasksByDate = grouped;
-      });
-    });
-    _groupTasksByDate(HiveService().taskBox);
   }
 
   void _groupTasksByDate(Box<Task> box) {
@@ -71,11 +57,13 @@ class _CalendarPageState extends State<CalendarPage> {
           eventLoader: _getTasksForDay,
           calendarFormat: _calendarFormat,
           onDaySelected: (selectedDay, focusedDay) {
+            if (!mounted) return;
             setState(() {
               _selectedDay = selectedDay;
               _focusedDay = focusedDay;
             });},
           onFormatChanged: (format) {
+            if (!mounted) return;
               setState(() {
                 _calendarFormat = format;
               });
@@ -136,8 +124,7 @@ class _CalendarPageState extends State<CalendarPage> {
       itemBuilder: (context, index) {
         final task = tasks[index];
         return ListTile(
-          title: Text(task.title),
-          subtitle: Text(DateFormat('HH:mm').format(task.date!)),
+          title: Text("${index+1}. ${task.title}"),
           trailing: _priorityIndicator(task.priority),
           onTap: () {
             openEditTaskDialog(context, task);
