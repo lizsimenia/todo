@@ -1,16 +1,20 @@
-# todo
+# Планировщик задач 
 
-A new todos project.
+## Установка 
 
-## Getting Started
+Для запуска приложения в режиме разработки используйте команду `flutter run` 
+Для запуска в релизной версии выполните `flutter run –release` 
 
-This project is a starting point for a Flutter application.
+## Каталоги 
 
-A few resources to get you started if this is your first Flutter project:
+Исходный код проекта находится в папке _lib_, точкой входа является файл _main.dart_ 
+В подкаталоге _pages_ расположены файлы исходного кода, реализующие функциональность четырех вкладок. 
+В каталоге _lib_ размещены модели для базы данных _Hive_ под названиями _task_model.dart_ и _task_model.g.dart_ (автоматически сгенерированный адаптером) 
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+## База данных 
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+Используется _NoSQL_ база данных _Hive_, при изменении структуры данных необходимо сгенерировать новый адаптер с помощью команды `flutter packages pub run build_runner build` Старые файлы данных, несовместимые с обновлённой структурой необходимо удалить командой `flutter packages pub run build_runner build --delete-conflicting-output` 
+
+## Обновление 
+
+Для добавления или обновления зависимостей в файле _pubspec.yaml_ используйте команду `flutter pub get`
